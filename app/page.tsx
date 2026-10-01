@@ -54,7 +54,7 @@ type Event = {
   moderation_note: string;
   cover_image: string;
   category?: { id: number; name: string; slug: string };
-  location: { name: string; city: string };
+  location: { name: string; postal_code: string; address: string; city: string; state: string };
   organizer?: AdminUser;
   created_at?: string;
   updated_at?: string;
@@ -306,7 +306,10 @@ export default function AdminHome() {
       ends_at: event.ends_at ? event.ends_at.slice(0, 16) : "",
       category_id: event.category?.id ? String(event.category.id) : "",
       location_name: event.location?.name || "",
+      location_postal_code: event.location?.postal_code || "",
       location_city: event.location?.city || "",
+      location_state: event.location?.state || "",
+      location_address: event.location?.address || "",
     });
     setPoster(null);
     setPosterPreview(event.cover_image || "");
