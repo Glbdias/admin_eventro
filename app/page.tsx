@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type Category = { id: number; name: string; slug: string };
 type DashboardMetrics = {
@@ -140,6 +141,7 @@ const slugify = (value: string) =>
     .replace(/(^-|-$)/g, "-");
 
 export default function AdminHome() {
+  const router = useRouter();
   const [token, setToken] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -269,11 +271,7 @@ export default function AdminHome() {
     }
   }
   function openCreate() {
-    setEditingId(null);
-    setForm(emptyForm);
-    setPoster(null);
-    setPosterPreview("");
-    setModal(true);
+    router.push("/eventos/novo");
   }
 
   function openEventDetails(event: Event) {
