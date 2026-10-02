@@ -334,7 +334,7 @@ export default function NewEventPage() {
           <div>
             {activeStep > 0 && <button type="button" className="event-creation-previous" onClick={() => setActiveStep((current) => current - 1)}>Anterior</button>}
             {activeStep < steps.length - 1 ? (
-              <button type="button" className="event-creation-next" onClick={advanceStep}>Continuar <span aria-hidden="true">→</span></button>
+              <button type="button" className="event-creation-next" onClick={(event) => { event.preventDefault(); advanceStep(); }}>Continuar <span aria-hidden="true">→</span></button>
             ) : (
               <button type="submit" className="event-creation-next" disabled={saving}>{saving ? "Salvando..." : eventId ? "Salvar alterações" : "Publicar evento"}</button>
             )}
