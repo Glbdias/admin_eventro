@@ -293,25 +293,7 @@ export default function AdminHome() {
     setSelectedUserEvents([]);
   }
   function openEdit(event: Event) {
-    setEditingId(event.id);
-    setForm({
-      ...emptyForm,
-      title: event.title,
-      description: event.description || "",
-      info_url: event.info_url || "",
-      whatsapp_phone: event.whatsapp_phone || "",
-      starts_at: event.starts_at.slice(0, 16),
-      ends_at: event.ends_at ? event.ends_at.slice(0, 16) : "",
-      category_id: event.category?.id ? String(event.category.id) : "",
-      location_name: event.location?.name || "",
-      location_postal_code: event.location?.postal_code || "",
-      location_city: event.location?.city || "",
-      location_state: event.location?.state || "",
-      location_address: event.location?.address || "",
-    });
-    setPoster(null);
-    setPosterPreview(event.cover_image || "");
-    setModal(true);
+    router.push(`/eventos/novo?edit=${event.id}`);
   }
   async function saveEvent(event: FormEvent) {
     event.preventDefault();

@@ -4,6 +4,17 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Category = { id: number; name: string; slug: string };
+type EventDetails = {
+  title: string;
+  description: string;
+  info_url: string;
+  whatsapp_phone: string;
+  starts_at: string;
+  ends_at: string | null;
+  cover_image: string;
+  category?: { id: number };
+  location: { name: string; postal_code: string; address: string; city: string; state: string };
+};
 type EventForm = {
   title: string;
   description: string;
@@ -49,10 +60,18 @@ function slugify(value: string) {
     .replace(/(^-|-$)/g, "");
 }
 
+function toDateTimeLocal(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 16);
+}
+
 export default function NewEventPage() {
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
   const [token, setToken] = useState("");
+  const [eventId, setEventId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [form, setForm] = useState<EventForm>(emptyForm);
   const [poster, setPoster] = useState<File | null>(null);
@@ -69,30 +88,55 @@ export default function NewEventPage() {
       return;
     }
 
+    const requestedEventId = new URLSearchParams(window.location.search).get("edit");
+    setEventId(requestedEventId);
     setToken(savedToken);
-    fetch(`${apiUrl}/admin/categories/`, {
-      headers: { Authorization: `Bearer ${savedToken}` },
-    })
-      .then(async (response) => {
-        if (response.status === 401) {
+
+    async function loadFormData() {
+      const headers = { Authorization: `Bearer ${savedToken}` };
+      const [categoryResponse, eventResponse] = await Promise.all([
+        fetch(`${apiUrl}/admin/categories/`, { headers }),
+        requestedEventId
+          ? fetch(`${apiUrl}/admin/events/${requestedEventId}/manage/`, { headers })
+          : Promise.resolve(null),
+      ]);
+      if (categoryResponse.status === 401 || eventResponse?.status === 401) {
           window.localStorage.removeItem("eventro_admin_token");
           router.replace("/");
           return;
-        }
-        if (!response.ok) throw new Error("Não foi possível carregar as categorias.");
-        setCategories(await response.json());
-      })
-      .catch((loadError: unknown) => {
+      }
+      if (!categoryResponse.ok) throw new Error("Não foi possível carregar as categorias.");
+      setCategories(await categoryResponse.json());
+
+      if (eventResponse) {
+        if (!eventResponse.ok) throw new Error("Não foi possível carregar o evento para edição.");
+        const event: EventDetails = await eventResponse.json();
+        setForm({
+          title: event.title,
+          description: event.description || "",
+          info_url: event.info_url || "",
+          whatsapp_phone: event.whatsapp_phone || "",
+          starts_at: toDateTimeLocal(event.starts_at),
+          ends_at: toDateTimeLocal(event.ends_at),
+          category_id: event.category?.id ? String(event.category.id) : "",
+          location_name: event.location?.name || "",
+          location_postal_code: event.location?.postal_code || "",
+          location_city: event.location?.city || "",
+          location_state: event.location?.state || "",
+          location_address: event.location?.address || "",
+        });
+        setPosterPreview(event.cover_image || "");
+      }
+    }
+
+    loadFormData().catch((loadError: unknown) => {
         setError(loadError instanceof Error ? loadError.message : "Falha ao carregar dados.");
       })
       .finally(() => setLoading(false));
   }, [router]);
 
   useEffect(() => {
-    if (!poster) {
-      setPosterPreview("");
-      return;
-    }
+    if (!poster) return;
     const previewUrl = URL.createObjectURL(poster);
     setPosterPreview(previewUrl);
     return () => URL.revokeObjectURL(previewUrl);
@@ -121,11 +165,16 @@ export default function NewEventPage() {
     if (poster) payload.append("cover_image", poster);
 
     try {
-      const response = await fetch(`${apiUrl}/admin/events/create/`, {
-        method: "POST",
+      const response = await fetch(
+        eventId
+          ? `${apiUrl}/admin/events/${eventId}/manage/`
+          : `${apiUrl}/admin/events/create/`,
+        {
+        method: eventId ? "PATCH" : "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: payload,
-      });
+        },
+      );
       const result = await response.json().catch(() => ({}));
       if (response.status === 401) {
         window.localStorage.removeItem("eventro_admin_token");
@@ -133,12 +182,12 @@ export default function NewEventPage() {
         return;
       }
       if (!response.ok) {
-        const message = result.detail || Object.values(result).flat().join(" ") || "Não foi possível publicar o evento.";
+        const message = result.detail || Object.values(result).flat().join(" ") || "Não foi possível salvar o evento.";
         throw new Error(message);
       }
       router.replace("/");
     } catch (saveError: unknown) {
-      setError(saveError instanceof Error ? saveError.message : "Não foi possível publicar o evento.");
+      setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar o evento.");
     } finally {
       setSaving(false);
     }
@@ -156,7 +205,7 @@ export default function NewEventPage() {
         <div className="event-creation-heading">
           <div>
             <span className="event-editor-eyebrow">EVENTRO ADMIN · EVENTOS</span>
-            <h1>Criar evento</h1>
+            <h1>{eventId ? "Editar evento" : "Criar evento"}</h1>
           </div>
           <span className="event-step-count">ETAPA {activeStep + 1} DE {steps.length}</span>
         </div>
@@ -287,7 +336,7 @@ export default function NewEventPage() {
             {activeStep < steps.length - 1 ? (
               <button type="button" className="event-creation-next" onClick={advanceStep}>Continuar <span aria-hidden="true">→</span></button>
             ) : (
-              <button type="submit" className="event-creation-next" disabled={saving}>{saving ? "Publicando..." : "Publicar evento"}</button>
+              <button type="submit" className="event-creation-next" disabled={saving}>{saving ? "Salvando..." : eventId ? "Salvar alterações" : "Publicar evento"}</button>
             )}
           </div>
         </footer>
