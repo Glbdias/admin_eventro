@@ -156,6 +156,12 @@ export default function AdminHome() {
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null);
   const [selectedUserEvents, setSelectedUserEvents] = useState<Event[]>([]);
   const [userSearch, setUserSearch] = useState("");
+  const [eventSearch, setEventSearch] = useState("");
+  const [eventOrganizer, setEventOrganizer] = useState("all");
+  const [eventStatus, setEventStatus] = useState("all");
+  const [eventDateFrom, setEventDateFrom] = useState("");
+  const [eventDateTo, setEventDateTo] = useState("");
+  const [eventsPage, setEventsPage] = useState(1);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [poster, setPoster] = useState<File | null>(null);
   const [posterPreview, setPosterPreview] = useState("");
@@ -367,6 +373,10 @@ export default function AdminHome() {
         }),
       });
       await load();
+      if (selectedUser) {
+        const userEvents = await request(`/admin/events/?organizer=${selectedUser.id}`);
+        setSelectedUserEvents(userEvents);
+      }
       notify(moderationStatus === "approved" ? "Evento aprovado." : "Evento recusado.");
     } catch (actionError) {
       notify(
@@ -380,7 +390,7 @@ export default function AdminHome() {
 
   async function moderateUser(id: number, reviewStatus: "approved" | "rejected") {
     try {
-      await request(`/admin/users/${id}/`, {
+      const updatedUser = await request(`/admin/users/${id}/`, {
         method: "PATCH",
         body: JSON.stringify({
           review_status: reviewStatus,
@@ -392,8 +402,7 @@ export default function AdminHome() {
       });
       await load();
       if (selectedUser?.id === id) {
-        const updated = await request(`/admin/users/${id}/`);
-        setSelectedUser(updated);
+        setSelectedUser(updatedUser);
       }
       notify(reviewStatus === "approved" ? "Perfil aprovado." : "Perfil recusado.");
     } catch (actionError) {
@@ -434,10 +443,31 @@ export default function AdminHome() {
 
   function eventStatusLabel(event: Event) {
     if (event.moderation_status === "approved" && event.is_published) return "Publicado";
-    if (event.moderation_status === "approved") return "Aprovado";
+    if (event.moderation_status === "approved") return "Rascunho";
     if (event.moderation_status === "rejected") return "Recusado";
     return "Em análise";
   }
+
+  const eventOrganizers = Array.from(
+    new Map(events.filter((event) => event.organizer).map((event) => [event.organizer!.id, event.organizer!])).values(),
+  );
+  const filteredEvents = events.filter((event) => {
+    const searchable = `${event.title} ${event.organizer?.first_name || ""} ${event.organizer?.username || ""}`.toLowerCase();
+    const startsOn = new Date(event.starts_at).toISOString().slice(0, 10);
+    const statusMatches = eventStatus === "all"
+      || (eventStatus === "draft" ? event.moderation_status === "approved" && !event.is_published : event.moderation_status === eventStatus && (eventStatus !== "approved" || event.is_published));
+    return searchable.includes(eventSearch.trim().toLowerCase())
+      && (eventOrganizer === "all" || String(event.organizer?.id) === eventOrganizer)
+      && statusMatches
+      && (!eventDateFrom || startsOn >= eventDateFrom)
+      && (!eventDateTo || startsOn <= eventDateTo);
+  });
+  const eventsPageSize = 5;
+  const eventsPageCount = Math.max(1, Math.ceil(filteredEvents.length / eventsPageSize));
+  const visibleEvents = filteredEvents.slice((eventsPage - 1) * eventsPageSize, eventsPage * eventsPageSize);
+  const publishedEventsCount = events.filter((event) => event.moderation_status === "approved" && event.is_published).length;
+  const pendingEventsCount = events.filter((event) => event.moderation_status === "pending").length;
+  const draftEventsCount = events.filter((event) => event.moderation_status === "approved" && !event.is_published).length;
 
   const filteredUsers = users.filter((user) => {
     const searchable = [
@@ -484,7 +514,7 @@ export default function AdminHome() {
     );
 
   return (
-    <div className="admin-layout">
+    <div className={`admin-layout ${view === "events" ? "events-layout" : ""}`}>
       {toast && (
         <div className={`toast ${toastTone === "success" ? "toast-success" : toastTone === "warning" ? "toast-warning" : "toast-error"}`}>
           <span>{toastTone === "success" ? "✓" : "!"}</span>
@@ -547,40 +577,30 @@ export default function AdminHome() {
           )}
         </header>
         {view === "events" ? (
-          <section className="category-table-panel">
-            <div className="category-table events-table">
-              <div className="category-table-head events-table-head">
-                <span>Evento</span>
-                <span>Organizador</span>
-                <span>Status</span>
-                <span>Ações</span>
+          <section className="events-workspace">
+            <div className="events-content">
+              <div className="events-filters">
+                <label className="events-search"><span aria-hidden="true">⌕</span><input value={eventSearch} onChange={(event) => { setEventSearch(event.target.value); setEventsPage(1); }} placeholder="Pesquisar eventos..." aria-label="Pesquisar eventos" /></label>
+                <label className="events-filter-field"><span>Período</span><div className="events-date-range"><input type="date" aria-label="Data inicial" value={eventDateFrom} onChange={(event) => { setEventDateFrom(event.target.value); setEventsPage(1); }} /><span>–</span><input type="date" aria-label="Data final" value={eventDateTo} onChange={(event) => { setEventDateTo(event.target.value); setEventsPage(1); }} /></div></label>
+                <label className="events-filter-field events-organizer-filter"><span>Organizador</span><select value={eventOrganizer} onChange={(event) => { setEventOrganizer(event.target.value); setEventsPage(1); }}><option value="all">Todos</option>{eventOrganizers.map((organizer) => <option key={organizer.id} value={organizer.id}>{organizer.first_name || organizer.username}</option>)}</select></label>
+                <div className="events-filter-field events-status-filter"><span>Status</span><div className="events-status-switches" role="group" aria-label="Filtrar por status">
+                  {[["all", "Todos", "●"], ["pending", "Em análise", "◷"], ["approved", "Publicados", "✓"], ["draft", "Rascunhos", "○"], ["rejected", "Recusados", "×"]].map(([value, label, icon]) => <button type="button" className={eventStatus === value ? `is-selected status-filter-${value}` : ""} key={value} onClick={() => { setEventStatus(value); setEventsPage(1); }} aria-pressed={eventStatus === value} title={label}>{icon}<span className="sr-only">{label}</span></button>)}
+                </div></div>
               </div>
-              {events.map((event) => (
-                <div className="category-table-row events-table-row" key={event.id}>
-                  <strong>{event.title}</strong>
-                  <span>{event.organizer?.first_name || event.organizer?.username || "-"}</span>
-                  <span>
-                    {eventStatusLabel(event)}
-                  </span>
-                  <div>
-                    <button onClick={() => openEventDetails(event)}>Consultar</button>
-                    {event.moderation_status === "pending" && (
-                      <>
-                        <button onClick={() => moderateEvent(event.id, "approved")}>Aprovar</button>
-                        <button onClick={() => moderateEvent(event.id, "rejected")}>Recusar</button>
-                      </>
-                    )}
-                    <button onClick={() => openEdit(event)}>Editar</button>
-                    <button
-                      className="danger-text"
-                      onClick={() => deleteEvent(event.id)}
-                    >
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-              ))}
+              <div className="events-table-wrap"><table className="events-admin-table">
+                <thead><tr><th>ID</th><th>Evento</th><th>Organizador</th><th>Data</th><th>Status</th><th>Ações</th></tr></thead>
+                <tbody>{visibleEvents.length === 0 ? <tr><td colSpan={6} className="events-empty">Nenhum evento encontrado.</td></tr> : visibleEvents.map((event) => <tr key={event.id}>
+                  <td className="events-id">{event.id}</td>
+                  <td className="events-title-cell">{event.title}</td>
+                  <td>{event.organizer?.first_name || event.organizer?.username || "-"}</td>
+                  <td>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(new Date(event.starts_at))}</td>
+                  <td><span className={`events-status-badge ${event.moderation_status === "pending" ? "is-pending" : event.moderation_status === "rejected" ? "is-rejected" : event.is_published ? "is-published" : "is-draft"}`}>{eventStatusLabel(event)}</span></td>
+                  <td><div className="events-row-actions"><button className="action-consult" onClick={() => openEventDetails(event)} title="Consultar">⊙ <span>Consultar</span></button>{event.moderation_status === "pending" && <button className="action-approve" onClick={() => moderateEvent(event.id, "approved")} title="Aprovar">✓ <span>Aprovar</span></button>}<button className="action-edit" onClick={() => openEdit(event)} title="Editar">✎ <span>Editar</span></button><button className="action-delete" onClick={() => deleteEvent(event.id)} title="Excluir">▣ <span>Excluir</span></button></div></td>
+                </tr>)}</tbody>
+                <tfoot><tr><td colSpan={6}><span>Resultados: {filteredEvents.length === 0 ? 0 : (eventsPage - 1) * eventsPageSize + 1} a {Math.min(eventsPage * eventsPageSize, filteredEvents.length)} de {filteredEvents.length}</span><div className="events-pagination"><button disabled={eventsPage <= 1} onClick={() => setEventsPage((current) => current - 1)} aria-label="Página anterior">←</button>{Array.from({ length: eventsPageCount }, (_, index) => index + 1).map((pageNumber) => <button className={eventsPage === pageNumber ? "is-current" : ""} key={pageNumber} onClick={() => setEventsPage(pageNumber)}>{pageNumber}</button>)}<button disabled={eventsPage >= eventsPageCount} onClick={() => setEventsPage((current) => current + 1)} aria-label="Próxima página">→</button></div></td></tr></tfoot>
+              </table></div>
             </div>
+            <aside className="events-summary" aria-label="Resumo de eventos"><div><span>Total de Eventos</span><strong>{events.length}</strong></div><div><span>Eventos Publicados</span><strong>{publishedEventsCount}</strong></div><div><span>Eventos em Análise</span><strong>{pendingEventsCount}</strong></div><div><span>Rascunhos</span><strong>{draftEventsCount}</strong></div></aside>
           </section>
         ) : view === "users" ? (
           <section className="category-table-panel">
