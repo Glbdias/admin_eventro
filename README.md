@@ -66,3 +66,7 @@ node scripts\importar-eventos.mjs eventos_eventro.json
 
 No repositorio `eventro`: `make dev-back` (ou `backend\venv\Scripts\python.exe manage.py runserver 8000` dentro de `backend`).
 - Limites da API: nome do local 400 e endereco 240 caracteres. Se o nome do local passar disso, o importador usa a cidade como local e move o texto original para o fim da descricao.
+A home mostra os 20 primeiros eventos (constante `INITIAL_VISIBLE` em `frontend/app/components/EventSearchResults.tsx`) e o botao **Ver tudo (N eventos)** leva para `/eventos`, mantendo a categoria e a busca escolhidas.
+
+A pagina `/eventos` (`frontend/app/eventos/page.tsx` + `components/AllEvents.tsx`) tem busca, filtro por categoria e paginacao de 20 por pagina. O estado fica na URL: `?q=`, `?categoria=` e `?pagina=`.
+- Limites da API: nome do local 400 e endereco 240 caracteres. Se o nome do local passar disso, o importador usa a cidade como local e move o texto original para o fim da descricao.
